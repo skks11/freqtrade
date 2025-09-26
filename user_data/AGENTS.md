@@ -8,6 +8,7 @@ Install dependencies inside the main freqtrade environment (`pip install freqtra
 - `freqtrade backtesting --strategy MyStrategy --config user_data/config.json --timerange 20240101-` evaluates performance using cached data.
 - `freqtrade hyperopt --spaces buy sell roi stoploss --strategy MyStrategy` tunes parameters saved into `hyperopts/`.
 - `freqtrade plot-dataframe --strategy MyStrategy` renders diagnostic charts into `backtest_results/plots/`.
+- `PROJECT_ROOT=/path/to/freqtrade USER_DIR=$(pwd) ./run_cycle_backtests.sh -s ElliotV5_SMA -c config.json -y cycles.json` orchestrates a full candle download + cycle backtest (append `-- <extra-args>` to forward optional freqtrade flags), writing per-cycle exports into `backtest_results/`.
 Run commands from the root freqtrade project while pointing to this `user_data` path via `--userdir` when needed.
 
 ## Coding Style & Naming Conventions
