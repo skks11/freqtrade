@@ -9,6 +9,7 @@ Install dependencies inside the main freqtrade environment (`pip install freqtra
 - `freqtrade hyperopt --spaces buy sell roi stoploss --strategy MyStrategy` tunes parameters saved into `hyperopts/`.
 - `freqtrade plot-dataframe --strategy MyStrategy` renders diagnostic charts into `backtest_results/plots/`.
 - `PROJECT_ROOT=/path/to/freqtrade USER_DIR=$(pwd) ./run_cycle_backtests.sh -s ElliotV5_SMA -c config.json -y cycles.json` orchestrates a full candle download + cycle backtest (append `-- <extra-args>` to forward optional freqtrade flags), writing per-cycle exports into `backtest_results/`.
+- Docker workflow: run cycle backtests via `./run_cycle_backtests.sh` (downloads candles with the compose stack), then analyze summaries locally with `BENCHMARK_DASHBOARD_HEADLESS=1 python benchmark_dashboard.py` or launch `streamlit run benchmark_dashboard.py` for the interactive dashboard.
 Run commands from the root freqtrade project while pointing to this `user_data` path via `--userdir` when needed.
 
 ## Coding Style & Naming Conventions
