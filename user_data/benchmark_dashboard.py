@@ -4,17 +4,76 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 from zipfile import ZipFile
 
-import pandas as pd
-import streamlit as st
+HEADLESS = os.getenv("BENCHMARK_DASHBOARD_HEADLESS") == "1"
+
+if not HEADLESS:
+    import pandas as pd  # type: ignore
+    import streamlit as st  # type: ignore
+else:  # pragma: no cover - lightweight fallback for CLI usage
+    pd = None  # type: ignore
+
+    class _StubSidebar:
+        def header(self, *_args: Any, **_kwargs: Any) -> None:  # noqa: D401 - noop stub
+            return
+
+        def multiselect(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+            return []
+
+        def number_input(self, *_args: Any, **_kwargs: Any) -> int:
+            return 0
+
+        def date_input(self, *_args: Any, **_kwargs: Any) -> tuple[datetime, datetime]:
+            today = datetime.utcnow().date()
+            return (today, today)
+
+        def selectbox(self, *_args: Any, **_kwargs: Any) -> Any:
+            return None
+
+        def checkbox(self, *_args: Any, **_kwargs: Any) -> bool:
+            return False
+
+        def markdown(self, *_args: Any, **_kwargs: Any) -> None:
+            return
+
+        def write(self, *_args: Any, **_kwargs: Any) -> None:
+            return
+
+    class _StubStreamlit:
+        sidebar = _StubSidebar()
+
+        @staticmethod
+        def set_page_config(*_args: Any, **_kwargs: Any) -> None:
+            return
+
+        @staticmethod
+        def title(*_args: Any, **_kwargs: Any) -> None:
+            return
+
+        @staticmethod
+        def warning(msg: str) -> None:
+            print(f"[streamlit warning] {msg}")
+
+        @staticmethod
+        def subheader(*_args: Any, **_kwargs: Any) -> None:
+            return
+
+        @staticmethod
+        def dataframe(*_args: Any, **_kwargs: Any) -> None:
+            return
+
+    st = _StubStreamlit()  # type: ignore
 
 USER_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = USER_DIR / "backtest_results"
 SUMMARY_GLOB = "summary_*.json"
+SUMMARY_FILTER = os.getenv("BENCHMARK_DASHBOARD_FILTER")
 CONTAINER_USER_PREFIXES = (
     Path("/freqtrade/user_data"),
     Path("/app/user_data"),
@@ -27,8 +86,8 @@ class CycleRecord:
     strategy: str
     cycle_id: int
     cycle_name: str
-    start: pd.Timestamp
-    end: pd.Timestamp
+    start: Any
+    end: Any
     trades: int
     wins: int
     losses: int
@@ -48,6 +107,7 @@ class CycleRecord:
     notes: str | None
     result_path: Path | None
     source_summary: Path
+    stake_currency: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -75,6 +135,7 @@ class CycleRecord:
             "notes": self.notes,
             "result_path": str(self.result_path) if self.result_path else None,
             "source_summary": str(self.source_summary),
+            "stake_currency": self.stake_currency,
         }
 
 
@@ -111,12 +172,18 @@ def load_cycle_records(summary_path: Path) -> list[CycleRecord]:
         host_result = resolve_host_path(cycle.get("result_file", ""))
         payload = load_strategy_payload(host_result, strategy) if host_result else None
         stats = payload or {}
+        if pd is not None:
+            start = pd.to_datetime(cycle.get("start"))
+            end = pd.to_datetime(cycle.get("end"))
+        else:
+            start = datetime.fromisoformat(cycle.get("start")) if cycle.get("start") else None
+            end = datetime.fromisoformat(cycle.get("end")) if cycle.get("end") else None
         record = CycleRecord(
             strategy=strategy,
             cycle_id=int(cycle.get("cycle_id", 0)),
             cycle_name=str(cycle.get("name", f"Cycle {cycle.get('cycle_id')}")),
-            start=pd.to_datetime(cycle.get("start")),
-            end=pd.to_datetime(cycle.get("end")),
+            start=start,
+            end=end,
             trades=int(stats.get("total_trades", cycle.get("trades", 0)) or 0),
             wins=int(stats.get("wins", cycle.get("wins", 0)) or 0),
             losses=int(stats.get("losses", cycle.get("losses", 0)) or 0),
@@ -136,16 +203,21 @@ def load_cycle_records(summary_path: Path) -> list[CycleRecord]:
             notes=str(cycle.get("notes")) if cycle.get("notes") else None,
             result_path=host_result,
             source_summary=summary_path,
+            stake_currency=str(summary.get("aggregate", {}).get("stake_currency")),
         )
         records.append(record)
     return records
 
 
-def load_all_records(results_dir: Path) -> pd.DataFrame:
-    summaries = sorted(results_dir.glob(SUMMARY_GLOB))
+def load_all_records(results_dir: Path):  # type: ignore[override]
+    summaries = sorted(results_dir.rglob(SUMMARY_GLOB))
+    if SUMMARY_FILTER:
+        summaries = [path for path in summaries if SUMMARY_FILTER in str(path)]
     rows: list[dict[str, Any]] = []
     for summary_path in summaries:
         rows.extend(rec.to_dict() for rec in load_cycle_records(summary_path))
+    if pd is None:
+        return rows
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
@@ -314,6 +386,45 @@ def render_dashboard(df: pd.DataFrame) -> None:
     st.sidebar.write(f"Loaded {len(df_filtered)} cycle rows from {len(df_filtered['strategy'].unique())} strategies")
 
 
+def render_cli(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        print("No cycle summaries found under", RESULTS_DIR)
+        return
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(row["source_summary"], []).append(row)
+
+    for summary_path, entries in grouped.items():
+        summary = json.loads(Path(summary_path).read_text())
+        strategy = summary.get("strategy", entries[0].get("strategy"))
+        aggregate = summary.get("aggregate", {})
+        currency = aggregate.get("stake_currency", entries[0].get("stake_currency", "USDT"))
+        total_trades = aggregate.get("total_trades") or sum(row.get("trades", 0) for row in entries)
+        total_profit = aggregate.get("profit_abs")
+        total_roi = aggregate.get("roi_pct")
+        worst_dd = aggregate.get("worst_drawdown_pct")
+
+        print(f"Summary: {Path(summary_path).relative_to(RESULTS_DIR)}")
+        print(f"  Strategy: {strategy}")
+        print(f"  Total trades: {total_trades}")
+        if total_profit is not None and total_roi is not None:
+            print(f"  Total profit: {total_profit:.2f} {currency} (ROI {total_roi:.2f}%)")
+        if worst_dd is not None:
+            print(f"  Worst drawdown: {worst_dd:.2f}%")
+        for row in sorted(entries, key=lambda x: x.get("cycle_id", 0)):
+            profit_pct = (row.get("profit_pct") or 0.0) * 100
+            win_pct = (row.get("winrate") or 0.0) * 100
+            dd_pct = (row.get("max_drawdown_pct") or 0.0) * 100
+            print(
+                f"    Cycle {row['cycle_id']}: {row['cycle_name']} -> profit {row.get('profit_abs'):.2f} ({profit_pct:.2f}%), "
+                f"win {win_pct:.2f}%, DD {dd_pct:.2f}%"
+            )
+        print()
+
+
 if __name__ == "__main__":
     data_frame = load_all_records(RESULTS_DIR)
-    render_dashboard(data_frame)
+    if pd is None:
+        render_cli(data_frame)
+    else:
+        render_dashboard(data_frame)
