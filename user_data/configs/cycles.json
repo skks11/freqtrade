@@ -1,0 +1,38 @@
+[
+    {
+        "id": 1,
+        "date_range": {
+            "start": "2020-01-01",
+            "end": "2021-11-10"
+        },
+        "name": "Bull Market Cycle",
+        "description": "Post-COVID recovery, Bitcoin halving, DeFi summer, NFT boom, institutional adoption, BTC ATH ~69k."
+    },
+    {
+        "id": 2,
+        "date_range": {
+            "start": "2021-11-11",
+            "end": "2022-11-21"
+        },
+        "name": "Bear Market Cycle",
+        "description": "Liquidity tightening, rate hikes, LUNA/UST collapse, FTX bankruptcy, BTC bottom ~15.5k."
+    },
+    {
+        "id": 3,
+        "date_range": {
+            "start": "2022-11-22",
+            "end": "2024-04-19"
+        },
+        "name": "Recovery & ETF Anticipation Cycle",
+        "description": "Market bottoming, banking crisis boost BTC, ETF anticipation drives BTC ATH ~73.8k pre-halving."
+    },
+    {
+        "id": 4,
+        "date_range": {
+            "start": "2024-04-20",
+            "end": "2025-09-22"
+        },
+        "name": "Post-Halving Bull Cycle",
+        "description": "Post-halving supply shock, institutional ETFs adoption, ETH ETF approval, RWA and AI narratives."
+    }
+] 
