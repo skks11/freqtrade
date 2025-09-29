@@ -108,6 +108,7 @@ class CycleRecord:
     result_path: Path | None
     source_summary: Path
     stake_currency: str | None = None
+    run_label: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -136,6 +137,7 @@ class CycleRecord:
             "result_path": str(self.result_path) if self.result_path else None,
             "source_summary": str(self.source_summary),
             "stake_currency": self.stake_currency,
+            "run_label": self.run_label,
         }
 
 
@@ -178,6 +180,7 @@ def load_cycle_records(summary_path: Path) -> list[CycleRecord]:
         else:
             start = datetime.fromisoformat(cycle.get("start")) if cycle.get("start") else None
             end = datetime.fromisoformat(cycle.get("end")) if cycle.get("end") else None
+        run_label = summary.get("run_label") or cycle.get("run_label")
         record = CycleRecord(
             strategy=strategy,
             cycle_id=int(cycle.get("cycle_id", 0)),
@@ -204,6 +207,7 @@ def load_cycle_records(summary_path: Path) -> list[CycleRecord]:
             result_path=host_result,
             source_summary=summary_path,
             stake_currency=str(summary.get("aggregate", {}).get("stake_currency")),
+            run_label=str(run_label) if run_label is not None else None,
         )
         records.append(record)
     return records
@@ -285,6 +289,7 @@ def render_dashboard(df: pd.DataFrame) -> None:
 
     column_labels = {
         "strategy": "Strategy",
+        "run_label": "Run Label",
         "cycle_name": "Cycle",
         "trades": "Trades",
         "winrate_pct": "Win Rate (%)",
@@ -303,6 +308,7 @@ def render_dashboard(df: pd.DataFrame) -> None:
     }
     display_cols = [
         "strategy",
+        "run_label",
         "cycle_name",
         "trades",
         "winrate_pct",
@@ -340,10 +346,11 @@ def render_dashboard(df: pd.DataFrame) -> None:
 
     st.subheader("Strategy Aggregates")
     agg_rows: list[dict[str, Any]] = []
-    for strategy, group in df_filtered.groupby("strategy"):
+    for (strategy, run_label), group in df_filtered.groupby(["strategy", "run_label"], dropna=False):
         total_trades = int(group["trades"].sum())
         agg_rows.append({
             "Strategy": strategy,
+            "Run Label": run_label,
             "Cycles": group["cycle_id"].nunique(),
             "Total Trades": total_trades,
             "Total Profit": group["profit_abs"].sum(),
@@ -367,7 +374,7 @@ def render_dashboard(df: pd.DataFrame) -> None:
             "Trades": "Total Trades",
         }
         agg_sort_col = agg_sort_map.get(sort_label, "Total Profit")
-        agg_df = agg_df.sort_values(by=agg_sort_col, ascending=ascending, na_position="last")
+        agg_df = agg_df.sort_values(by=[agg_sort_col, "Strategy", "Run Label"], ascending=ascending, na_position="last")
         st.dataframe(
             agg_df.style.format({
                 "Total Profit": "{:.2f}",
@@ -399,6 +406,7 @@ def render_cli(rows: list[dict[str, Any]]) -> None:
         strategy = summary.get("strategy", entries[0].get("strategy"))
         aggregate = summary.get("aggregate", {})
         currency = aggregate.get("stake_currency", entries[0].get("stake_currency", "USDT"))
+        run_label = summary.get("run_label") or aggregate.get("run_label")
         total_trades = aggregate.get("total_trades") or sum(row.get("trades", 0) for row in entries)
         total_profit = aggregate.get("profit_abs")
         total_roi = aggregate.get("roi_pct")
@@ -406,6 +414,8 @@ def render_cli(rows: list[dict[str, Any]]) -> None:
 
         print(f"Summary: {Path(summary_path).relative_to(RESULTS_DIR)}")
         print(f"  Strategy: {strategy}")
+        if run_label:
+            print(f"  Run label: {run_label}")
         print(f"  Total trades: {total_trades}")
         if total_profit is not None and total_roi is not None:
             print(f"  Total profit: {total_profit:.2f} {currency} (ROI {total_roi:.2f}%)")
