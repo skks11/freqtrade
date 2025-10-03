@@ -9,7 +9,9 @@ user_data/*
 !user_data/notebooks
 !user_data/models
 !user_data/freqaimodels
-!user_data/strategy/*
+!user_data/strategies
+!user_data/hyperopts
+!user_data/configs
 user_data/freqaimodels/*
 user_data/models/*
 user_data/notebooks/*
